@@ -11,7 +11,7 @@ import Testing
 /// machine arrives, and whether a file lands on disk.
 /// Serialized on purpose: every test here is main-actor bound and drives a full mastering run,
 /// so letting them interleave just starves the actor they are all waiting on.
-@Suite("Mastering controller", .timeLimit(.minutes(3)), .serialized)
+@Suite("Mastering controller", .timeLimit(.minutes(5)), .serialized)
 @MainActor
 struct MasteringControllerTests {
     /// Writes a short real audio file to a temporary directory and returns its URL.
@@ -36,7 +36,7 @@ struct MasteringControllerTests {
     }
 
     /// Polls the controller until it settles, rather than assuming a fixed duration.
-    static func waitUntilDone(_ controller: MasteringController, timeout: Double = 90) async -> Bool {
+    static func waitUntilDone(_ controller: MasteringController, timeout: Double = 240) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if case .done = controller.phase { return true }

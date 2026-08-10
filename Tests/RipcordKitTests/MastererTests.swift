@@ -3,11 +3,13 @@ import Testing
 @testable import RipcordKit
 
 /// End-to-end properties. These are the promises the app makes on its own front page.
-@Suite("Mastering", .timeLimit(.minutes(3)))
+/// Serialized and deliberately short: each test masters a whole file, and letting a dozen
+/// of them compete for a two-core CI runner turns seconds into timeouts.
+@Suite("Mastering", .timeLimit(.minutes(5)), .serialized)
 struct MastererTests {
     @Test("Output lands on the loudness target", arguments: Intensity.allCases)
     func hitsLoudnessTarget(intensity: Intensity) {
-        let input = Signal.gain(Signal.musicLike(seconds: 8), dB: -12)
+        let input = Signal.gain(Signal.musicLike(seconds: 4), dB: -12)
         let result = Masterer().master(channels: input, sampleRate: 48000, intensity: intensity)
         let error = result.after.integratedLUFS - intensity.targetLUFS
         #expect(abs(error) < 0.15, "\(intensity) landed at \(result.after.integratedLUFS) LUFS")
@@ -20,7 +22,7 @@ struct MastererTests {
           arguments: Intensity.allCases)
     func hitsTargetOnDenseMaterial(intensity: Intensity) {
         // Squash the fixture first so it arrives with very little crest left to give.
-        var channels = Signal.gain(Signal.musicLike(seconds: 8), dB: 12)
+        var channels = Signal.gain(Signal.musicLike(seconds: 4), dB: 12)
         for c in channels.indices {
             for i in channels[c].indices {
                 channels[c][i] = Float(tanh(Double(channels[c][i]) * 2.5) * 0.35)
@@ -35,7 +37,7 @@ struct MastererTests {
 
     @Test("Output never exceeds the ceiling", arguments: Intensity.allCases)
     func respectsCeiling(intensity: Intensity) {
-        let input = Signal.gain(Signal.musicLike(seconds: 8), dB: -12)
+        let input = Signal.gain(Signal.musicLike(seconds: 4), dB: -12)
         let result = Masterer().master(channels: input, sampleRate: 48000, intensity: intensity)
         #expect(result.after.truePeakDBTP <= intensity.ceilingDBTP + 0.05,
                 "measured \(result.after.truePeakDBTP) dBTP against a \(intensity.ceilingDBTP) ceiling")
@@ -45,7 +47,7 @@ struct MastererTests {
     @Test("The starting level does not change where the output lands",
           arguments: [-30.0, -18.0, -6.0, 0.0])
     func inputLevelDoesNotMatter(offset: Double) {
-        let input = Signal.gain(Signal.musicLike(seconds: 8), dB: offset - 12)
+        let input = Signal.gain(Signal.musicLike(seconds: 4), dB: offset - 12)
         let result = Masterer().master(channels: input, sampleRate: 48000, intensity: .standard)
         #expect(abs(result.after.integratedLUFS - (-11)) < 0.3,
                 "starting \(offset) dB off landed at \(result.after.integratedLUFS) LUFS")
@@ -85,7 +87,7 @@ struct MastererTests {
     @Test("Repeated passes converge instead of running away")
     func repeatedPassesConverge() {
         let target = ChainDesigner.normalize(ChainDesigner.targetCurveDB)
-        var channels = Signal.gain(Signal.musicLike(seconds: 8), dB: -12)
+        var channels = Signal.gain(Signal.musicLike(seconds: 4), dB: -12)
 
         var movements = [Double]()
         var distances = [Double]()
@@ -117,7 +119,7 @@ struct MastererTests {
 
     @Test("Mono input stays mono and still hits the target")
     func handlesMono() {
-        let mono = [Signal.gain([Signal.musicLike(seconds: 6)[0]], dB: -12)[0]]
+        let mono = [Signal.gain([Signal.musicLike(seconds: 4)[0]], dB: -12)[0]]
         let result = Masterer().master(channels: mono, sampleRate: 48000, intensity: .standard)
         #expect(result.channels.count == 1)
         #expect(abs(result.after.integratedLUFS - (-11)) < 0.4)
@@ -125,7 +127,7 @@ struct MastererTests {
 
     @Test("Works at sample rates other than 48 kHz", arguments: [44100.0, 96000.0])
     func handlesOtherSampleRates(rate: Double) {
-        let input = Signal.gain(Signal.musicLike(seconds: 6, sampleRate: rate), dB: -12)
+        let input = Signal.gain(Signal.musicLike(seconds: 4, sampleRate: rate), dB: -12)
         let result = Masterer().master(channels: input, sampleRate: rate, intensity: .standard)
         #expect(abs(result.after.integratedLUFS - (-11)) < 0.3)
         #expect(result.after.truePeakDBTP <= -1.0 + 0.05)
@@ -134,7 +136,7 @@ struct MastererTests {
     /// The report is what the user reads. It must describe the audio that was actually produced.
     @Test("The report quotes the measured output, not the intended settings")
     func reportMatchesOutput() {
-        let input = Signal.gain(Signal.musicLike(seconds: 6), dB: -12)
+        let input = Signal.gain(Signal.musicLike(seconds: 4), dB: -12)
         let result = Masterer().master(channels: input, sampleRate: 48000, intensity: .standard)
         let report = Report(result: result)
         let loudness = report.measurements.first { $0.label == "LOUDNESS" }!

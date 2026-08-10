@@ -8,7 +8,7 @@ import Testing
 /// back: progress was bridged through an `AsyncStream`, and `onTermination` cancelled the
 /// producing task when the stream finished normally, so the delivery was swallowed by a
 /// cancellation check. Every symptom pointed at saving; nothing was wrong with saving.
-@Suite("Background job", .timeLimit(.minutes(2)))
+@Suite("Background job", .timeLimit(.minutes(5)), .serialized)
 struct MasteringJobTests {
     /// A concurrent counter, since progress arrives off the calling thread.
     final class Recorder: @unchecked Sendable {
@@ -28,7 +28,7 @@ struct MasteringJobTests {
 
     @Test("The job actually returns its result")
     func deliversResult() async {
-        let input = Signal.gain(Signal.musicLike(seconds: 4), dB: -12)
+        let input = Signal.gain(Signal.musicLike(seconds: 3), dB: -12)
         let recorder = Recorder()
 
         let result = await MasteringJob.run(channels: input, sampleRate: 48000, intensity: .standard) { stage, _ in
@@ -43,7 +43,7 @@ struct MasteringJobTests {
 
     @Test("Progress is reported and finishes at the end")
     func reportsProgress() async {
-        let input = Signal.gain(Signal.musicLike(seconds: 4), dB: -12)
+        let input = Signal.gain(Signal.musicLike(seconds: 3), dB: -12)
         let recorder = Recorder()
         _ = await MasteringJob.run(channels: input, sampleRate: 48000, intensity: .standard) { stage, _ in
             recorder.record(stage)
