@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: swift --version
+      - name: Test
+        run: swift test
+
+  app:
+    runs-on: macos-15
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal app
+        run: make app
+      - name: Verify the bundle is universal and sandboxed
+        run: |
+          lipo -archs build/Ripcord.app/Contents/MacOS/Ripcord
+          lipo -archs build/Ripcord.app/Contents/MacOS/Ripcord | grep -q arm64
+          lipo -archs build/Ripcord.app/Contents/MacOS/Ripcord | grep -q x86_64
+          codesign -d --entitlements - --xml build/Ripcord.app | grep -q app-sandbox
+          # The offline claim is only meaningful if the network entitlement is genuinely absent.
+          if codesign -d --entitlements - --xml build/Ripcord.app | grep -q "network"; then
+            echo "A network entitlement was added; the offline guarantee no longer holds." >&2
+            exit 1
+          fi
+      - name: Package
+        run: ditto -c -k --keepParent build/Ripcord.app Ripcord.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ripcord.app
+          path: Ripcord.zip
+      - name: Attach to release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" Ripcord.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

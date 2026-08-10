@@ -1,0 +1,9 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+.DS_Store
+*.wav
+*.mp3
+*.aiff
+!Tests/**/*.wav
