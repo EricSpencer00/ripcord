@@ -10,7 +10,27 @@ struct MastererTests {
         let input = Signal.gain(Signal.musicLike(seconds: 8), dB: -12)
         let result = Masterer().master(channels: input, sampleRate: 48000, intensity: intensity)
         let error = result.after.integratedLUFS - intensity.targetLUFS
-        #expect(abs(error) < 0.3, "\(intensity) landed at \(result.after.integratedLUFS) LUFS")
+        #expect(abs(error) < 0.15, "\(intensity) landed at \(result.after.integratedLUFS) LUFS")
+    }
+
+    /// Dense material driven hard is where the makeup search is most likely to stall: under heavy
+    /// limiting an extra dB of gain buys much less than a dB of loudness, so a search that assumes
+    /// otherwise stops short. Real tracks exposed this where the gentler fixture above did not.
+    @Test("Dense material still reaches the target under heavy limiting",
+          arguments: Intensity.allCases)
+    func hitsTargetOnDenseMaterial(intensity: Intensity) {
+        // Squash the fixture first so it arrives with very little crest left to give.
+        var channels = Signal.gain(Signal.musicLike(seconds: 8), dB: 12)
+        for c in channels.indices {
+            for i in channels[c].indices {
+                channels[c][i] = Float(tanh(Double(channels[c][i]) * 2.5) * 0.35)
+            }
+        }
+        let result = Masterer().master(channels: channels, sampleRate: 48000, intensity: intensity)
+        let error = result.after.integratedLUFS - intensity.targetLUFS
+        #expect(abs(error) < 0.15,
+                "\(intensity) landed at \(result.after.integratedLUFS) after \(result.passes) passes")
+        #expect(result.after.truePeakDBTP <= intensity.ceilingDBTP + 0.05)
     }
 
     @Test("Output never exceeds the ceiling", arguments: Intensity.allCases)

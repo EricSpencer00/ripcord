@@ -85,7 +85,13 @@ public struct Masterer: Sendable {
             return (0..<l.count).map { max(l[$0], r[$0]) }
         }()
 
-        for pass in 1...4 {
+        // Under heavy limiting an extra dB of makeup buys well under a dB of loudness, so a
+        // correction of `error` undershoots and the search stalls short of the target. Measuring
+        // the actual slope between passes and stepping by `error / slope` converges instead.
+        var previousMakeup: Double?
+        var previousAchieved: Double?
+
+        for pass in 1...5 {
             passes = pass
             var candidate = preLimiter.map { $0 }
             applyGain(&candidate, dB: makeup)
@@ -104,9 +110,19 @@ public struct Masterer: Sendable {
             best = candidate
             let achieved = meter.measure(channels: candidate).integratedLUFS
             let error = settings.targetLUFS - achieved
-            progress?(.verifying, 0.70 + 0.05 * Double(pass))
-            if abs(error) < 0.1 || !error.isFinite { break }
-            makeup += error
+            progress?(.verifying, 0.70 + 0.04 * Double(pass))
+            if abs(error) < 0.05 || !error.isFinite { break }
+
+            var step = error
+            if let previousMakeup, let previousAchieved, abs(makeup - previousMakeup) > 1e-6 {
+                let slope = (achieved - previousAchieved) / (makeup - previousMakeup)
+                if slope.isFinite, slope > 0.15 {
+                    step = error / min(slope, 1.0)
+                }
+            }
+            previousMakeup = makeup
+            previousAchieved = achieved
+            makeup += step.clamped(to: -6...6)
         }
 
         progress?(.verifying, 0.92)
