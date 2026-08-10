@@ -14,5 +14,6 @@ let package = Package(
         .executableTarget(name: "ripcord-cli", dependencies: ["RipcordKit"]),
         .executableTarget(name: "Ripcord", dependencies: ["RipcordKit"]),
         .testTarget(name: "RipcordKitTests", dependencies: ["RipcordKit"]),
+        .testTarget(name: "RipcordAppTests", dependencies: ["Ripcord", "RipcordKit"]),
     ]
 )

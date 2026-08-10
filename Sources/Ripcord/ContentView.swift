@@ -89,6 +89,24 @@ private struct Footer: View {
             HStack(spacing: 18) {
                 IntensityPicker(controller: controller)
                 Spacer()
+                if let savedURL = controller.savedURL {
+                    Button {
+                        controller.revealSaved()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("Saved to \(savedURL.deletingLastPathComponent().lastPathComponent)")
+                                .font(Theme.label)
+                                .tracking(Theme.labelTracking)
+                                .textCase(.uppercase)
+                        }
+                        .foregroundStyle(Theme.accent(scheme))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show the saved file in the Finder")
+                }
                 if controller.canSave {
                     Button("Copy report") { controller.copyReport() }
                         .buttonStyle(FlatButton(prominent: false))
