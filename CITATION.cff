@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Ripcord"
+abstract: "Offline macOS audio mastering in Swift and Accelerate. Runs entirely on-device with no network entitlement."
+type: software
+authors:
+  - family-names: Spencer
+    given-names: Eric
+    affiliation: "Loyola University Chicago"
+    website: "https://ericspencer.us"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"  # add once the iD is registered
+repository-code: "https://github.com/EricSpencer00/ripcord"
+url: "https://ericspencer.us"
+license: MIT
+version: "0.1.0"
+date-released: "2026-08-18"
