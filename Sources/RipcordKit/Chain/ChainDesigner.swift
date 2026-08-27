@@ -15,7 +15,8 @@ public enum ChainDesigner {
     /// dominated by room noise and the top octave by lossy-codec rolloff.
     private static let bandLimitsDB: [Double] = [2.5, 4, 4, 4, 4, 4, 4, 4, 3, 2.5]
 
-    public static func design(for analysis: Analysis, intensity: Intensity) -> MasterSettings {
+    public static func design(for analysis: Analysis, intensity: Intensity,
+                              delivery: Delivery = .none) -> MasterSettings {
         let target = normalize(targetCurveDB)
         let measured = analysis.normalizedBands
         let alreadyMastered = isAlreadyMastered(analysis: analysis, target: target, measured: measured, intensity: intensity)
@@ -35,7 +36,9 @@ public enum ChainDesigner {
 
         return MasterSettings(
             intensity: intensity,
+            delivery: delivery,
             highpassHz: highpassFrequency(for: analysis),
+            desiredToneDB: desired,
             toneBands: toneBands,
             resonanceCuts: resonanceCuts,
             crossovers: [120, 800, 5000],
@@ -43,7 +46,10 @@ public enum ChainDesigner {
             width: width(for: analysis, alreadyMastered: alreadyMastered),
             monoBelowHz: analysis.lowCorrelation < 0.9 && analysis.channelCount > 1 ? 110 : 0,
             targetLUFS: intensity.targetLUFS,
-            ceilingDBTP: intensity.ceilingDBTP,
+            // A delivery target only ever tightens the ceiling. If the chosen intensity already
+            // leaves more headroom than the target asks for, taking the target's number would be
+            // pushing the master louder than the user asked in the name of a constraint.
+            ceilingDBTP: min(intensity.ceilingDBTP, delivery.ceilingDBTP ?? .infinity),
             alreadyMastered: alreadyMastered)
     }
 
@@ -54,7 +60,7 @@ public enum ChainDesigner {
     /// Octave-spaced bells overlap heavily, so setting each band's gain to its desired value
     /// overshoots badly once they sum. A few rounds of measure-and-correct fixes that, and costs
     /// nothing because the response is evaluated analytically rather than by filtering audio.
-    static func solveToneBands(desired: [Double], sampleRate: Double) -> [MasterSettings.EQBand] {
+    public static func solveToneBands(desired: [Double], sampleRate: Double) -> [MasterSettings.EQBand] {
         let centers = Analysis.bandEdges.map { sqrt($0.low * $0.high) }
         let nyquist = sampleRate / 2
 
@@ -158,7 +164,7 @@ public enum ChainDesigner {
 }
 
 extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
+    public func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
     }
 }

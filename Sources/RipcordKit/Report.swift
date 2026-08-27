@@ -26,8 +26,16 @@ public struct Report: Sendable {
     public var bandsBefore: [Double]
     public var bandsAfter: [Double]
     public var bandLabels: [String] { Analysis.bandLabels }
+    /// The format of the file this was made from, when it is known. Carried so the report is the
+    /// evidence that the resolution survived, rather than an assertion that it did.
+    public var sourceFormat: AudioIO.Format?
+    /// Delivery-target checks, when a target is selected and has been evaluated.
+    public var conformance: Conformance?
 
-    public init(result: Masterer.Result) {
+    public init(result: Masterer.Result, sourceFormat: AudioIO.Format? = nil,
+                conformance: Conformance? = nil) {
+        self.sourceFormat = sourceFormat
+        self.conformance = conformance
         let before = result.before
         let after = result.after
         let settings = result.settings
@@ -44,7 +52,7 @@ public struct Report: Sendable {
             subhead = "\(settings.intensity.label) · \(Report.formatDuration(after.durationSeconds)) · \(Int(after.sampleRate / 1000)) kHz"
         }
 
-        measurements = [
+        var measurements: [Measurement] = [
             .init(label: "LOUDNESS", before: Report.format(before.integratedLUFS),
                   after: Report.format(after.integratedLUFS), unit: "LUFS"),
             .init(label: "TRUE PEAK", before: Report.format(before.truePeakDBTP),
@@ -56,6 +64,16 @@ public struct Report: Sendable {
             .init(label: "CORRELATION", before: Report.format(before.correlation, decimals: 2),
                   after: Report.format(after.correlation, decimals: 2), unit: ""),
         ]
+
+        if let sourceFormat {
+            // Delivery is always 24-bit PCM at whatever rate arrived, so the "after" side is
+            // derived from the source rather than guessed.
+            let output = AudioIO.Format(sampleRate: after.sampleRate, bitDepth: 24, codec: "lpcm")
+            measurements.append(.init(label: "FORMAT", before: sourceFormat.summary,
+                                      after: output.summary, unit: ""))
+        }
+
+        self.measurements = measurements
 
         var moves = [Move]()
         if !result.unchanged {
@@ -106,16 +124,21 @@ public struct Report: Sendable {
     /// Plain-text rendering, used by the CLI and by the app's copy-to-clipboard.
     public func plainText() -> String {
         var lines = ["RIPCORD  \(headline)", subhead, ""]
-        lines.append(pad("", 13) + rightPad("BEFORE", 9) + rightPad("AFTER", 9))
+        let width = max(9, measurements.map { max($0.before.count, $0.after.count) }.max() ?? 9) + 2
+        lines.append(pad("", 13) + rightPad("BEFORE", width) + rightPad("AFTER", width))
         for measurement in measurements {
             lines.append(pad(measurement.label, 13)
-                         + rightPad(measurement.before, 9)
-                         + rightPad(measurement.after, 9)
+                         + rightPad(measurement.before, width)
+                         + rightPad(measurement.after, width)
                          + "  " + measurement.unit)
         }
         lines.append("")
         for move in moves {
             lines.append(pad(move.label, 13) + move.detail)
+        }
+        if let conformance {
+            lines.append("")
+            lines.append(conformance.plainText())
         }
         return lines.joined(separator: "\n")
     }

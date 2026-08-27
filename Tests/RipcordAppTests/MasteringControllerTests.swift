@@ -95,8 +95,8 @@ struct MasteringControllerTests {
         #expect(twice.lastPathComponent == "Song (mastered).wav")
     }
 
-    @Test("Changing intensity reprocesses and lands on the new target")
-    func reprocessing() async throws {
+    @Test("Changing preset re-renders and lands on the new target")
+    func changingPreset() async throws {
         let url = try Self.makeTestFile()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
@@ -104,15 +104,248 @@ struct MasteringControllerTests {
         controller.load(url)
         #expect(await Self.waitUntilDone(controller))
 
-        controller.intensity = .loud
-        controller.reprocess()
-        #expect(await Self.waitUntilDone(controller), "reprocessing never finished")
+        controller.select(.loud)
+        await controller.settle()
 
         let destination = url.deletingLastPathComponent().appendingPathComponent("loud.wav")
         controller.save(to: destination)
         let written = try AudioIO.read(destination)
         let measured = Analyzer.analyze(channels: written.channels, sampleRate: written.sampleRate)
         #expect(abs(measured.integratedLUFS - (-9)) < 0.3, "measured \(measured.integratedLUFS)")
+    }
+
+    // MARK: - The live mixer
+
+    /// The behaviour the mixer exists for: the report and the audio stay put while the next render
+    /// happens behind them, instead of the window dropping back to a progress bar.
+    @Test("A knob move keeps the report on screen and marks it stale")
+    func knobMoveKeepsTheResult() async throws {
+        let url = try Self.makeTestFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+        let firstHeadline = controller.report?.headline
+
+        controller.set(-15, for: .targetLUFS)
+        #expect(controller.phase == .done(name: url.lastPathComponent), "the window changed screens")
+        #expect(controller.report != nil, "the report was thrown away mid-edit")
+        #expect(controller.isStale, "the report is not marked as out of date")
+        #expect(controller.regen == .pending)
+
+        await controller.settle()
+        #expect(controller.regen == .settled)
+        #expect(!controller.isStale)
+        #expect(controller.report?.headline != firstHeadline, "the report did not follow the knob")
+    }
+
+    /// A drag emits a value per frame. Rendering each one would be both useless and unusable.
+    @Test("A drag across a slider renders once, for where it stopped")
+    func dragCoalescesIntoOneRender() async throws {
+        let url = try Self.makeTestFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+        let baseline = controller.completedRenders
+
+        for step in 0..<40 {
+            controller.set(-18 + Double(step) * 0.2, for: .targetLUFS)
+        }
+        await controller.settle()
+
+        let renders = controller.completedRenders - baseline
+        #expect(renders <= 2, "rendered \(renders) times for one drag")
+        #expect(controller.mixer.targetLUFS == -10.2)
+    }
+
+    /// Hitting Save mid-drag must not write the render from before the last move.
+    @Test("Saving flushes pending knob moves first")
+    func savingFlushesPendingEdits() async throws {
+        let url = try Self.makeTestFile()
+        let directory = url.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+
+        let destination = directory.appendingPathComponent("flushed.wav")
+        controller.set(-14, for: .targetLUFS)
+        #expect(controller.regen == .pending, "nothing was pending, so this proves nothing")
+        await controller.flushAndSave(to: destination)
+
+        let written = try AudioIO.read(destination)
+        let measured = Analyzer.analyze(channels: written.channels, sampleRate: written.sampleRate)
+        #expect(abs(measured.integratedLUFS - (-14)) < 0.3,
+                "saved the render from before the move: \(measured.integratedLUFS)")
+    }
+
+    @Test("Handing a knob back returns the automatic master exactly")
+    func resettingReturnsTheAutomaticMaster() async throws {
+        let url = try Self.makeTestFile()
+        let directory = url.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+        let automatic = directory.appendingPathComponent("auto.wav")
+        controller.save(to: automatic)
+
+        controller.set(1.5, for: .width)
+        controller.set(3, for: .bassTrimDB)
+        await controller.settle()
+        #expect(controller.mixer.isTouched)
+
+        controller.resetAll()
+        await controller.settle()
+        #expect(!controller.mixer.isTouched)
+        #expect(!controller.isStale)
+
+        let restored = directory.appendingPathComponent("restored.wav")
+        controller.save(to: restored)
+        let a = try AudioIO.read(automatic)
+        let b = try AudioIO.read(restored)
+        #expect(a.channels == b.channels, "resetting did not return the original master")
+    }
+
+    /// Playback is the point of a live mixer, so a re-render must not tear the transport down.
+    @Test("Re-rendering keeps the loaded preview rather than reloading it")
+    func rerenderKeepsThePreview() async throws {
+        let url = try Self.makeTestFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+        let duration = controller.preview.duration
+        #expect(duration > 0)
+
+        controller.set(1.4, for: .compression)
+        await controller.settle()
+        #expect(controller.preview.duration == duration, "the preview was torn down and rebuilt")
+    }
+
+    @Test("A new file hands every knob back to the analysis")
+    func loadingClearsTheMixer() async throws {
+        let first = try Self.makeTestFile()
+        let second = try Self.makeTestFile()
+        defer {
+            try? FileManager.default.removeItem(at: first.deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: second.deletingLastPathComponent())
+        }
+
+        let controller = MasteringController()
+        controller.load(first)
+        #expect(await Self.waitUntilDone(controller))
+        controller.set(-16, for: .targetLUFS)
+        controller.select(.loud)
+
+        controller.load(second)
+        #expect(await Self.waitUntilDone(controller))
+        #expect(!controller.mixer.isTouched, "carried a knob onto a different track")
+        #expect(controller.mixer.intensity == .loud, "the preset should survive the new file")
+        #expect(!controller.isStale)
+    }
+
+    /// The delivery pass is slow, so it must not sit in the render path. What the controller has to
+    /// get right is that the master appears first and the claims about it appear after.
+    @Test("Choosing a delivery target checks the master after showing it")
+    func deliveryChecksAfterRendering() async throws {
+        let url = try Self.makeTestFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+        #expect(controller.conformance == nil, "checks appeared without a target being chosen")
+
+        controller.select(Delivery.appleMusic)
+        await controller.settle()
+
+        let conformance = try #require(controller.conformance, "the checks never ran")
+        #expect(controller.phase == .done(name: url.lastPathComponent))
+        #expect(controller.regen == .settled)
+        #expect(conformance.delivery == .appleMusic)
+        #expect(controller.report?.conformance != nil, "the report did not pick the checks up")
+        #expect(controller.report?.plainText().contains("CHECKED AGAINST") == true)
+
+        // The fixture is a 24-bit file at its native rate with a conforming ceiling, so everything
+        // it can control should pass.
+        #expect(conformance.passed, "checks not met:\n\(conformance.plainText())")
+    }
+
+    /// The conformance pass can turn the master down, and if the saved file were the pre-trim
+    /// render the report would describe one file while Save wrote another.
+    @Test("Saving after a delivery check writes the checked master")
+    func savingWritesTheCheckedMaster() async throws {
+        let url = try Self.makeTestFile()
+        let directory = url.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+        controller.select(Delivery.appleMusic)
+        await controller.settle()
+        let conformance = try #require(controller.conformance)
+
+        let destination = directory.appendingPathComponent("delivered.wav")
+        await controller.flushAndSave(to: destination)
+
+        let written = try AudioIO.read(destination)
+        #expect(written.sourceFormat.bitDepth == 24)
+        #expect(written.sampleRate == 48000, "the delivery write resampled")
+
+        // The headroom claim has to hold on the bytes that landed on disk.
+        let peak = TruePeakMeter.certification.truePeakDBTP(written.channels)
+        #expect(peak <= -1.0 + 0.01, "the saved file measures \(peak) dBTP")
+        #expect(conformance.passed)
+    }
+
+    @Test("Moving a knob withdraws the checks until they are re-run")
+    func editingWithdrawsTheChecks() async throws {
+        let url = try Self.makeTestFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+        controller.select(Delivery.appleMusic)
+        await controller.settle()
+        #expect(controller.conformance != nil)
+
+        controller.set(-15, for: .targetLUFS)
+        #expect(controller.conformance == nil,
+                "the old checks were left standing against a master that no longer exists")
+
+        await controller.settle()
+        #expect(controller.conformance != nil, "the checks did not re-run")
+        #expect(controller.regen == .settled)
+    }
+
+    @Test("A silent file leaves nothing to mix")
+    func silenceDisablesTheMixer() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ripcord-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("silence.wav")
+        let silence = [[Float]](repeating: [Float](repeating: 0, count: 48000), count: 2)
+        try AudioIO.writeWAV(channels: silence, sampleRate: 48000, to: url)
+
+        let controller = MasteringController()
+        controller.load(url)
+        #expect(await Self.waitUntilDone(controller))
+        #expect(!controller.isMixerEnabled)
+        #expect(!controller.canSave)
+
+        // A knob move on a file with nothing in it must not start a render that cannot help.
+        controller.set(-9, for: .targetLUFS)
+        #expect(controller.regen == .settled)
     }
 
     @Test("An unreadable file reports a failure instead of hanging")

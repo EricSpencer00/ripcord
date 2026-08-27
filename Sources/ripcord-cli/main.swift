@@ -27,8 +27,13 @@ func usage() -> Never {
 
     Options:
       --intensity <gentle|standard|loud>   default: standard
+      --delivery <none|apple>              check the master against a delivery target
       --out <path>                         default: "<input> (mastered).wav"
       --analyze                            measure only, write nothing
+
+    With --delivery, the master is encoded to AAC and decoded back to check for overs, and
+    the ceiling is lowered and the level pass re-run if it clips. Exits non-zero if any
+    check is not met, so a release script can gate on it.
     """
     print(text)
     exit(2)
@@ -38,6 +43,7 @@ var arguments = Array(CommandLine.arguments.dropFirst())
 guard !arguments.isEmpty else { usage() }
 
 var intensity = Intensity.standard
+var delivery = Delivery.none
 var outputPath: String?
 var analyzeOnly = false
 var inputPath: String?
@@ -49,6 +55,10 @@ while index < arguments.count {
         index += 1
         guard index < arguments.count, let parsed = Intensity(rawValue: arguments[index]) else { usage() }
         intensity = parsed
+    case "--delivery":
+        index += 1
+        guard index < arguments.count, let parsed = Delivery(rawValue: arguments[index]) else { usage() }
+        delivery = parsed
     case "--out":
         index += 1
         guard index < arguments.count else { usage() }
@@ -92,21 +102,45 @@ do {
     }
 
     let tracker = StageTracker()
-    let result = Masterer().master(channels: audio.channels, sampleRate: audio.sampleRate,
-                                   intensity: intensity) { stage, _ in
+    let announce: @Sendable (Masterer.Stage, Double) -> Void = { stage, _ in
         if tracker.announce(stage) {
             FileHandle.standardError.write("  \(stage.rawValue)…\n".data(using: .utf8)!)
         }
     }
 
+    // The engine rather than `Masterer` directly, because the delivery pass needs its level-pass
+    // cache: the ceiling correction re-runs only the limiter search, not the whole chain.
+    let engine = MasteringEngine(channels: audio.channels, sampleRate: audio.sampleRate)
+    let mixer = Mixer(intensity: intensity, delivery: delivery)
+
+    var conformance: Conformance?
+    let result: Masterer.Result
+    if delivery == .none {
+        guard let rendered = await engine.render(mixer: mixer, progress: announce) else { exit(1) }
+        result = rendered
+    } else {
+        guard let outcome = await engine.conform(mixer: mixer, progress: announce) else { exit(1) }
+        result = outcome.result
+        conformance = Conformance.evaluate(outcome, source: audio.sourceFormat,
+                                           outputBitDepth: delivery.bitDepth)
+    }
+
     print("")
-    print(Report(result: result).plainText())
+    print(Report(result: result, sourceFormat: audio.sourceFormat,
+                 conformance: conformance).plainText())
     print("")
 
     let outputURL = outputPath.map { URL(fileURLWithPath: $0) }
         ?? AudioIO.defaultOutputURL(for: inputURL)
-    try AudioIO.writeWAV(channels: result.channels, sampleRate: audio.sampleRate, to: outputURL)
+    try AudioIO.writeWAV(channels: result.channels, sampleRate: audio.sampleRate,
+                         bitDepth: delivery.bitDepth, to: outputURL)
     print(String(format: "→ %@  (%.1fs)", outputURL.path, Date().timeIntervalSince(clock)))
+
+    // Non-zero on a failed or unrunnable check, so a release script can gate on this.
+    if let conformance, !conformance.passed {
+        FileHandle.standardError.write("ripcord: delivery checks not met\n".data(using: .utf8)!)
+        exit(3)
+    }
 } catch {
     FileHandle.standardError.write("ripcord: \(error.localizedDescription)\n".data(using: .utf8)!)
     exit(1)
