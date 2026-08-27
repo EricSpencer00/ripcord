@@ -27,12 +27,23 @@ struct ReportView: View {
 
                     Rule(opacity: 0.3).padding(.vertical, 16)
                     MovesList(moves: report.moves)
+
+                    if let conformance = report.conformance {
+                        Rule(opacity: 0.3).padding(.vertical, 16)
+                        ChecksList(conformance: conformance)
+                    }
                 }
                 .padding(.horizontal, 26)
                 .padding(.top, 20)
                 .padding(.bottom, 18)
                 .wipeIn()
             }
+            // Dimmed, not replaced. The numbers are still true of the audio that is still playing;
+            // they are just no longer true of where the knobs are, and that is what fading says.
+            .opacity(controller.isStale ? 0.5 : 1)
+            .animation(.easeOut(duration: 0.15), value: controller.isStale)
+
+            MixerView(controller: controller)
             Transport(preview: controller.preview)
         }
     }
@@ -191,6 +202,77 @@ private struct MovesList: View {
                 .padding(.vertical, 4)
             }
         }
+    }
+}
+
+/// The delivery checks: the limit, what the rendered file measures, and whether one is inside the
+/// other. Never a badge — passing a technical check is not admission to anyone's programme.
+private struct ChecksList: View {
+    let conformance: Conformance
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                SectionLabel(conformance.heading)
+                Spacer()
+                SectionLabel(summary, color: conformance.passed
+                             ? Theme.accent(scheme) : Theme.ink(scheme).opacity(0.55))
+            }
+            .padding(.bottom, 8)
+
+            ForEach(conformance.checks) { check in
+                Rule(opacity: 0.14)
+                HStack(alignment: .top, spacing: 12) {
+                    Text(mark(check))
+                        .font(Theme.data(9, weight: .bold))
+                        .frame(width: 34, alignment: .leading)
+                        .foregroundStyle(colour(check))
+                    Text(check.label)
+                        .font(Theme.data(10, weight: .semibold))
+                        .tracking(0.6)
+                        .frame(width: 92, alignment: .leading)
+                        .opacity(0.55)
+                    Text(check.limit)
+                        .font(Theme.data(10))
+                        .frame(width: 190, alignment: .leading)
+                        .opacity(0.55)
+                    Text(check.measured)
+                        .font(Theme.data(10, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 5)
+            }
+            Rule(opacity: 0.14)
+
+            if let note = conformance.trimNote {
+                Text(note)
+                    .font(Theme.data(10))
+                    .opacity(0.6)
+                    .padding(.top, 7)
+            }
+            Text(String(format: "True peak measured at %d× oversampling; worst-case under-read %.3f dB.",
+                        TruePeakMeter.certification.factor, -conformance.meterUncertaintyDB))
+                .font(Theme.data(9))
+                .opacity(0.42)
+                .padding(.top, 5)
+        }
+    }
+
+    private var summary: String {
+        if conformance.hasIndeterminate { return "Incomplete" }
+        return conformance.passed ? "All checks met" : "Not met"
+    }
+
+    private func mark(_ check: Conformance.Check) -> String {
+        if check.indeterminate { return "—" }
+        return check.passed ? "OK" : "FAIL"
+    }
+
+    private func colour(_ check: Conformance.Check) -> Color {
+        if check.indeterminate { return Theme.ink(scheme).opacity(0.45) }
+        return check.passed ? Theme.ink(scheme).opacity(0.55) : Theme.accent(scheme)
     }
 }
 

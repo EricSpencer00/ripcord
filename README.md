@@ -20,5 +20,28 @@ There's a CLI too:
 make cli
 .build/release/ripcord-cli track.wav --intensity loud
 .build/release/ripcord-cli track.wav --analyze     # just measure, write nothing
+.build/release/ripcord-cli track.wav --delivery apple
 ```
+
+## Delivery checks
+
+Pick a delivery target and the finished master gets checked against a published set of technical
+requirements, with the limit, the measurement and the verdict printed as rows. Every figure is
+measured on the rendered audio.
+
+The Apple target follows the *Apple Digital Masters* technology brief (April 2021): a 24-bit source
+kept at its native sample rate with no conversion, and at least 1 dB of headroom. It also encodes
+the master to 256 kbps AAC, decodes it back, and counts any samples that come back over full scale
+— the overs that a PCM meter cannot see. If the encode clips, the ceiling comes down and the level
+pass runs again.
+
+Two things it does not do. It does not set a loudness target, because Apple does not publish one.
+And it prints no badge: passing these checks is not the same as being admitted to Apple's
+programme, which only Apple can do.
+
+The CLI exits non-zero when a check is not met, so a release script can gate on it.
+
+Immersive formats are out of scope. Dolby Atmos is authored as objects with positional metadata and
+delivered as an ADM BWF; a stereo tool has no basis for producing one, and Ripcord does not try.
+
 MIT.

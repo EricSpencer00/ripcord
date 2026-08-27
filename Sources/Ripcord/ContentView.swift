@@ -88,6 +88,7 @@ private struct Footer: View {
             Rule(opacity: 0.3)
             HStack(spacing: 18) {
                 IntensityPicker(controller: controller)
+                DeliveryPicker(controller: controller)
                 Spacer()
                 if let savedURL = controller.savedURL {
                     Button {
@@ -113,6 +114,9 @@ private struct Footer: View {
                     Button("Save WAV") { controller.save() }
                         .buttonStyle(FlatButton(prominent: true))
                         .keyboardShortcut("s", modifiers: .command)
+                        .help(controller.isStale
+                              ? "Renders the mixer as it stands now, then asks where to put it."
+                              : "Write the master shown above as a 24-bit WAV")
                 }
                 if case .idle = controller.phase {} else {
                     Button("New") { controller.reset() }
@@ -132,11 +136,9 @@ private struct IntensityPicker: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Intensity.allCases, id: \.self) { intensity in
-                let selected = controller.intensity == intensity
+                let selected = controller.mixer.intensity == intensity
                 Button {
-                    guard controller.intensity != intensity else { return }
-                    controller.intensity = intensity
-                    controller.reprocess()
+                    controller.select(intensity)
                 } label: {
                     VStack(spacing: 2) {
                         Text(intensity.label)
@@ -156,6 +158,41 @@ private struct IntensityPicker: View {
             }
         }
         .overlay(Rectangle().stroke(Theme.ink(scheme).opacity(0.3), lineWidth: 1))
+        .help("The chain the tool designs on its own. Choosing one hands every mixer control back to the analysis.")
+    }
+}
+
+/// Who the file is going to, which is a different question from how hard it was pushed.
+private struct DeliveryPicker: View {
+    @ObservedObject var controller: MasteringController
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Delivery.allCases, id: \.self) { delivery in
+                let selected = controller.mixer.delivery == delivery
+                Button {
+                    controller.select(delivery)
+                } label: {
+                    VStack(spacing: 2) {
+                        Text(delivery.label)
+                            .font(Theme.label)
+                            .tracking(Theme.labelTracking)
+                        Text(delivery == .none ? "NO CHECKS" : "CHECKED")
+                            .font(Theme.data(9))
+                            .opacity(0.6)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .foregroundStyle(selected ? Theme.paper(scheme) : Theme.ink(scheme).opacity(0.6))
+                    .background(selected ? Theme.ink(scheme) : .clear)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .overlay(Rectangle().stroke(Theme.ink(scheme).opacity(0.3), lineWidth: 1))
+        .help("Checks the finished master against a published set of technical requirements, including an AAC encode. It does not change how the music is treated beyond the headroom the requirements ask for.")
     }
 }
 

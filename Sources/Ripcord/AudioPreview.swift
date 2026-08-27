@@ -58,6 +58,32 @@ final class AudioPreview: ObservableObject {
         applyMix()
     }
 
+    /// Swaps in a freshly rendered master without disturbing the original or the transport.
+    ///
+    /// A live mixer is only live if it can be heard, so this deliberately does not stop playback.
+    /// Rebuilding only the master matters too: the original is unchanged by definition, and copying
+    /// a full-length track into a new buffer on every knob move is exactly the kind of work that
+    /// turns a live control into a stuttering one.
+    func updateMastered(_ channels: [[Float]], loudnessGainDB: Double) {
+        guard let format = originalBuffer?.format else { return }
+        matchOffsetDB = -max(loudnessGainDB, 0)
+        masteredBuffer = Self.makeBuffer(channels, format: format)
+        applyMix()
+        // Both nodes are scheduled together, so the new buffer only becomes audible by restarting
+        // them both from where the playhead is now. Seeking to the current position does that and
+        // keeps the two sides sample-aligned, at the cost of a gap too short to hear as a break.
+        if isPlaying { seek(to: position) }
+    }
+
+    /// Drops both buffers, for when there is no longer a track to compare.
+    func unload() {
+        stop()
+        originalBuffer = nil
+        masteredBuffer = nil
+        duration = 0
+        position = 0
+    }
+
     private static func makeBuffer(_ channels: [[Float]], format: AVAudioFormat) -> AVAudioPCMBuffer? {
         let frames = AVAudioFrameCount(channels.first?.count ?? 0)
         guard frames > 0,

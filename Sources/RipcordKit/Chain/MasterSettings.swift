@@ -70,7 +70,14 @@ public struct MasterSettings: Sendable, Equatable {
     }
 
     public var intensity: Intensity
+    /// What the finished file has to satisfy. Separate from `intensity` on purpose; see `Delivery`.
+    public var delivery: Delivery = .none
     public var highpassHz: Double
+    /// The per-octave correction the tone bands are solving for, in dB, aligned to
+    /// `Analysis.bandEdges`. Kept alongside the solved bands because the live mixer re-solves
+    /// this curve rather than scaling the solved gains: octave bells overlap, so scaling each
+    /// gain by k does not scale the combined response by k.
+    public var desiredToneDB: [Double]
     /// Broad tonal correction derived from the target curve.
     public var toneBands: [EQBand]
     /// Narrow cuts for individual resonances.
@@ -85,6 +92,44 @@ public struct MasterSettings: Sendable, Equatable {
     public var alreadyMastered: Bool
 
     public var allEQBands: [EQBand] { toneBands + resonanceCuts }
+
+    // MARK: - Stage dependencies
+
+    /// Everything the tone stage of the chain reads. Two settings with the same tone key produce
+    /// the same tone-stage audio, which is what lets a re-render skip it.
+    public struct ToneKey: Equatable, Sendable {
+        public var highpassHz: Double
+        public var bands: [EQBand]
+        public var width: Double
+        public var monoBelowHz: Double
+    }
+
+    /// Everything the dynamics stage reads, including the tone stage it is fed by.
+    public struct DynamicsKey: Equatable, Sendable {
+        public var tone: ToneKey
+        public var crossovers: [Double]
+        public var bands: [CompressorBand]
+    }
+
+    public var toneKey: ToneKey {
+        ToneKey(highpassHz: highpassHz, bands: allEQBands, width: width, monoBelowHz: monoBelowHz)
+    }
+
+    /// Everything the level pass reads, including the passes it is fed by. Two settings with the
+    /// same level key produce the same finished master.
+    public struct LevelKey: Equatable, Sendable {
+        public var dynamics: DynamicsKey
+        public var targetLUFS: Double
+        public var ceilingDBTP: Double
+    }
+
+    public var dynamicsKey: DynamicsKey {
+        DynamicsKey(tone: toneKey, crossovers: crossovers, bands: compressorBands)
+    }
+
+    public var levelKey: LevelKey {
+        LevelKey(dynamics: dynamicsKey, targetLUFS: targetLUFS, ceilingDBTP: ceilingDBTP)
+    }
 
     /// Working level the signal is normalized to before compression, so that fixed thresholds mean
     /// the same thing regardless of how loud the file arrived.
