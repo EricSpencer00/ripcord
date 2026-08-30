@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ripcord — offline mastering for macOS</title>
+<meta name="description" content="Drop a track on it, get a mastered WAV back. Everything happens on your Mac. No account, no upload, no network code.">
+<meta property="og:title" content="Ripcord — offline mastering for macOS">
+<meta property="og:description" content="Drop a track on it, get a mastered WAV back. Everything happens on your Mac.">
+<meta property="og:type" content="website">
+<style>
+:root {
+  --paper: #ede9e0;
+  --ink: #1c1b17;
+  --accent: #d4521b;
+  --rule: rgba(28, 27, 23, 0.22);
+  --faint: rgba(28, 27, 23, 0.06);
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: ui-sans-serif, -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16150f;
+    --ink: #e9e4d8;
+    --accent: #f26722;
+    --rule: rgba(233, 228, 216, 0.24);
+    --faint: rgba(233, 228, 216, 0.07);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 54rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--accent); }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+h1 {
+  font-family: var(--sans);
+  font-weight: 900;
+  font-stretch: 75%;
+  font-size: clamp(4rem, 17vw, 9rem);
+  line-height: 0.86;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+h2 {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+}
+p { margin: 0 0 1rem; max-width: 38rem; }
+.rule-accent { border-top: 3px solid var(--accent); margin: 0.6rem 0 0.9rem; }
+.standfirst { font-size: 1.25rem; font-weight: 500; }
+.dek {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.4rem;
+}
+
+/* Download */
+.download { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem 1.2rem; }
+.button {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 0.85rem 1.6rem;
+}
+.button:hover { filter: brightness(1.1); }
+.terms { font-family: var(--mono); font-size: 0.75rem; opacity: 0.7; }
+code, pre { font-family: var(--mono); font-size: 0.82rem; }
+pre { background: var(--faint); padding: 0.9rem 1rem; overflow-x: auto; }
+
+/* A/B player */
+.ab { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 1.4rem 0; }
+.transport { display: flex; align-items: center; gap: 1rem; }
+.play {
+  width: 3.4rem; height: 3.4rem; flex: none;
+  border: 1px solid var(--ink); background: none; color: inherit;
+  border-radius: 50%; cursor: pointer; font-size: 1rem; line-height: 1;
+}
+.play:hover { background: var(--faint); }
+.scrub { flex: 1; height: 3px; background: var(--rule); position: relative; cursor: pointer; }
+.played { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); }
+.clock { font-family: var(--mono); font-size: 0.8rem; }
+.switch { display: flex; margin-top: 1.2rem; border: 1px solid var(--ink); }
+.switch button {
+  flex: 1; padding: 0.7rem; background: none; border: 0; cursor: pointer;
+  font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: inherit;
+}
+.switch button + button { border-left: 1px solid var(--ink); }
+.switch button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+
+/* Figures */
+table { width: 100%; margin-top: 2rem; border-collapse: collapse; font-family: var(--mono); font-size: 0.85rem; }
+th, td { text-align: right; padding: 0.5rem 0; border-bottom: 1px solid var(--faint); }
+th:first-child, td:first-child { text-align: left; letter-spacing: 0.08em; }
+thead th { font-weight: 600; opacity: 0.6; font-size: 0.7rem; letter-spacing: 0.14em; }
+td.after { color: var(--accent); }
+td.unit { width: 4.5rem; opacity: 0.55; text-align: left; padding-left: 0.8rem; }
+.note { font-size: 0.88rem; opacity: 0.75; max-width: 38rem; }
+footer { font-family: var(--mono); font-size: 0.75rem; opacity: 0.7; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>RIPCORD</h1>
+  <div class="rule-accent"></div>
+  <div class="dek"><span>Offline mastering</span><span>macOS 14+</span><span>Universal · 2 MB</span><span>MIT</span></div>
+</header>
+
+<hr>
+
+<p class="standfirst">Drop a track on it, get a mastered WAV back.</p>
+<p>Everything happens on your Mac. There is no account, no upload, and no network code in the
+app at all. The whole thing is Swift and Accelerate: BS.1770-4 loudness, 4× oversampled true
+peak, a multiband compressor and a lookahead limiter.</p>
+
+<div class="download">
+  <a class="button" href="https://github.com/EricSpencer00/ripcord/releases/latest">Download the .dmg</a>
+  <span class="terms">Signed and notarised · Apple silicon and Intel</span>
+</div>
+
+<hr>
+
+<h2>Before and after</h2>
+<p>The same 15 seconds, mastered at the standard intensity. Play it and switch between the two.
+Both files run together, so the switch is instant.</p>
+
+<div class="ab">
+  <div class="transport">
+    <button class="play" id="play" aria-label="Play">▶</button>
+    <div class="scrub" id="scrub"><div class="played" id="played"></div></div>
+    <span class="clock" id="clock">0:00</span>
+  </div>
+  <div class="switch">
+    <button id="pick-before" aria-pressed="true">Before</button>
+    <button id="pick-after" aria-pressed="false">After</button>
+  </div>
+  <audio id="before" src="audio/before.m4a" preload="auto" loop></audio>
+  <audio id="after" src="audio/after.m4a" preload="auto" loop></audio>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Measured</th><th>Before</th><th>After</th><th class="unit"></th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Loudness</td><td>−22.5</td><td class="after">−11.0</td><td class="unit">LUFS</td></tr>
+    <tr><td>True peak</td><td>−7.4</td><td class="after">−1.0</td><td class="unit">dBTP</td></tr>
+    <tr><td>Range</td><td>1.0</td><td class="after">0.6</td><td class="unit">LU</td></tr>
+    <tr><td>Crest</td><td>15.9</td><td class="after">11.5</td><td class="unit">dB</td></tr>
+    <tr><td>Correlation</td><td>0.95</td><td class="after">0.90</td><td class="unit"></td></tr>
+  </tbody>
+</table>
+
+<p class="note">The master is 11.5 LU louder, and louder always sounds better for a moment. Listen
+to the tone and the low end, not the level. The clip is synthesised by
+<code>Tools/makedemo.swift</code>, so no third party audio is involved, and the master is the
+unedited output of the standard preset.</p>
+
+<hr>
+
+<h2>What it measures</h2>
+<p>Loudness follows ITU-R BS.1770-4: K-weighting, 400 ms blocks, a −10 LU relative gate. True peak
+is read from a 4× oversampled signal, so it catches the inter-sample peaks a sample meter misses.
+Every figure in the report is measured on the rendered audio, not predicted from the settings.</p>
+
+<h2>Delivery checks</h2>
+<p>Pick a delivery target and the master is checked against a published set of technical
+requirements. The Apple target follows the <em>Apple Digital Masters</em> technology brief: 24-bit,
+the native sample rate, at least 1 dB of headroom. It also encodes to 256 kbps AAC, decodes it
+back, and counts the samples that return over full scale. If the encode clips, the ceiling comes
+down and the level pass runs again.</p>
+
+<h2>There is a CLI</h2>
+<pre>make cli
+.build/release/ripcord-cli track.wav --intensity loud
+.build/release/ripcord-cli track.wav --analyze
+.build/release/ripcord-cli track.wav --delivery apple</pre>
+<p class="note">It exits non-zero when a delivery check is not met, so a release script can gate on it.</p>
+
+<hr>
+
+<footer>
+  MIT · <a href="https://github.com/EricSpencer00/ripcord">Source on GitHub</a> ·
+  <a href="https://github.com/EricSpencer00/ripcord/releases">Releases</a>
+</footer>
+
+</main>
+
+<script>
+// Both files play at once and one of them is muted. Switching then costs nothing and the two
+// stay sample aligned, which is the only way an A/B tells you anything.
+const before = document.getElementById('before');
+const after = document.getElementById('after');
+const play = document.getElementById('play');
+const scrub = document.getElementById('scrub');
+const played = document.getElementById('played');
+const clock = document.getElementById('clock');
+const pickBefore = document.getElementById('pick-before');
+const pickAfter = document.getElementById('pick-after');
+
+after.volume = 0;
+
+function select(which) {
+  const wantAfter = which === 'after';
+  before.volume = wantAfter ? 0 : 1;
+  after.volume = wantAfter ? 1 : 0;
+  pickBefore.setAttribute('aria-pressed', String(!wantAfter));
+  pickAfter.setAttribute('aria-pressed', String(wantAfter));
+}
+pickBefore.addEventListener('click', () => select('before'));
+pickAfter.addEventListener('click', () => select('after'));
+
+play.addEventListener('click', () => {
+  if (before.paused) {
+    after.currentTime = before.currentTime;
+    before.play();
+    after.play();
+    play.textContent = '❚❚';
+    play.setAttribute('aria-label', 'Pause');
+  } else {
+    before.pause();
+    after.pause();
+    play.textContent = '▶';
+    play.setAttribute('aria-label', 'Play');
+  }
+});
+
+scrub.addEventListener('click', (event) => {
+  const box = scrub.getBoundingClientRect();
+  const position = (event.clientX - box.left) / box.width * (before.duration || 0);
+  before.currentTime = position;
+  after.currentTime = position;
+});
+
+before.addEventListener('timeupdate', () => {
+  const duration = before.duration || 1;
+  played.style.width = (before.currentTime / duration * 100) + '%';
+  const seconds = Math.floor(before.currentTime);
+  clock.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+  // Decoders drift a little. Pull the muted file back when it does.
+  if (Math.abs(after.currentTime - before.currentTime) > 0.05) after.currentTime = before.currentTime;
+});
+</script>
+</body>
+</html>

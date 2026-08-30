@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# Signing needs four secrets. Without them the job still builds a disk image, but it is ad-hoc
+# signed and Gatekeeper refuses it.
+#   DEVELOPER_ID_CERTIFICATE  the Developer ID Application .p12, base64 encoded
+#   DEVELOPER_ID_PASSWORD     its export password
+#   DEVELOPER_ID_IDENTITY     the identity name, "Developer ID Application: … (TEAMID)"
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD  notarytool credentials
+jobs:
+  dmg:
+    runs-on: macos-15
+    env:
+      SIGN: ${{ secrets.DEVELOPER_ID_IDENTITY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import the Developer ID certificate
+        if: env.SIGN != ''
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p runner "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p runner "$keychain"
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k runner "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm "$RUNNER_TEMP/cert.p12"
+
+      - name: Build, sign, notarise and staple the disk image
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: make dmg SIGN="${SIGN:--}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ripcord.dmg
+          path: build/*.dmg
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" build/*.dmg --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
