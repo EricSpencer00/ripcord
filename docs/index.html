@@ -222,12 +222,13 @@ const clock = document.getElementById('clock');
 const pickBefore = document.getElementById('pick-before');
 const pickAfter = document.getElementById('pick-after');
 
-after.volume = 0;
+// iOS ignores a write to volume, so the switch has to mute instead.
+after.muted = true;
 
 function select(which) {
   const wantAfter = which === 'after';
-  before.volume = wantAfter ? 0 : 1;
-  after.volume = wantAfter ? 1 : 0;
+  before.muted = wantAfter;
+  after.muted = !wantAfter;
   pickBefore.setAttribute('aria-pressed', String(!wantAfter));
   pickAfter.setAttribute('aria-pressed', String(wantAfter));
 }
