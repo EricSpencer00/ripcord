@@ -8,6 +8,9 @@
 <meta property="og:title" content="Ripcord — offline mastering for macOS">
 <meta property="og:description" content="Drop a track on it, get a mastered WAV back. Everything happens on your Mac.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://ericspencer00.github.io/ripcord/">
+<meta property="og:image" content="https://ericspencer00.github.io/ripcord/og.png">
+<meta name="twitter:card" content="summary_large_image">
 <style>
 :root {
   --paper: #ede9e0;
@@ -262,8 +265,12 @@ before.addEventListener('timeupdate', () => {
   played.style.width = (before.currentTime / duration * 100) + '%';
   const seconds = Math.floor(before.currentTime);
   clock.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
-  // Decoders drift a little. Pull the muted file back when it does.
-  if (Math.abs(after.currentTime - before.currentTime) > 0.05) after.currentTime = before.currentTime;
+  // Decoders drift a little. Pull the muted file back when it does; seeking the one you can
+  // hear would click.
+  if (Math.abs(after.currentTime - before.currentTime) > 0.05) {
+    if (after.muted) after.currentTime = before.currentTime;
+    else before.currentTime = after.currentTime;
+  }
 });
 </script>
 </body>

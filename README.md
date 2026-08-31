@@ -57,6 +57,7 @@ Immersive formats are out of scope. Dolby Atmos is authored as objects with posi
 delivered as an ADM BWF; a stereo tool has no basis for producing one, and Ripcord does not try.
 
 The clip on the landing page is synthesized by `Tools/makedemo.swift` and mastered by the CLI, so
-the site carries no third-party audio. `make demo` regenerates both files.
+the site carries no third-party audio. `make demo` regenerates both files, and `make og` renders
+the link preview card a posted link shows.
 
 MIT.

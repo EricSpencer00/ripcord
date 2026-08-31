@@ -12,7 +12,7 @@ SIGN      ?= -
 export SIGN
 SIGNFLAGS := $(if $(filter -,$(SIGN)),--timestamp=none,--options runtime --timestamp)
 
-.PHONY: app run test cli dmg demo lint clean
+.PHONY: app run test cli dmg demo og lint clean
 
 ## Build a universal, ad-hoc signed Ripcord.app in build/
 app: clean-bundle
@@ -52,6 +52,10 @@ demo: cli
 	@afconvert -f m4af -d aac -b 128000 -q 127 -s 2 build/demo-before.wav docs/audio/before.m4a
 	@afconvert -f m4af -d aac -b 128000 -q 127 -s 2 build/demo-after.wav docs/audio/after.m4a
 	@echo "→ docs/audio"
+
+## Render the link preview card the landing page points at
+og:
+	@swift Tools/makeog.swift docs/og.png
 
 clean-bundle:
 	@rm -rf $(BUNDLE)
