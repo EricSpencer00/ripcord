@@ -6,6 +6,7 @@ public enum AudioIO {
     public enum Failure: LocalizedError {
         case unreadable(URL, String)
         case emptyFile(URL)
+        case unsupportedChannelCount(URL, Int)
         case unwritable(URL, String)
 
         public var errorDescription: String? {
@@ -14,6 +15,9 @@ public enum AudioIO {
                 return "Could not read \(url.lastPathComponent). \(reason)"
             case .emptyFile(let url):
                 return "\(url.lastPathComponent) contains no audio."
+            case .unsupportedChannelCount(let url, let count):
+                return "\(url.lastPathComponent) has \(count) audio channels. "
+                    + "Ripcord masters mono or stereo files only."
             case .unwritable(let url, let reason):
                 return "Could not write \(url.lastPathComponent). \(reason)"
             }
@@ -103,12 +107,16 @@ public enum AudioIO {
         let count = Int(buffer.frameLength)
         guard count > 0 else { throw Failure.emptyFile(url) }
         let channelCount = Int(format.channelCount)
+        guard channelCount <= 2 else {
+            // The mastering chain is intentionally stereo. Dropping every channel after the
+            // first two would make a surround source appear to succeed while silently discarding
+            // its centre and surround content, which is worse than refusing it at the file boundary.
+            throw Failure.unsupportedChannelCount(url, channelCount)
+        }
         var channels = [[Float]]()
         for c in 0..<channelCount {
             channels.append(Array(UnsafeBufferPointer(start: data[c], count: count)))
         }
-        // Everything downstream assumes one or two channels; fold anything wider down to stereo.
-        if channels.count > 2 { channels = Array(channels.prefix(2)) }
 
         // `processingFormat` is always 32-bit float, so the stored depth has to come from
         // `fileFormat`. It reads 0 for a lossy codec, which is genuinely "no sample depth"

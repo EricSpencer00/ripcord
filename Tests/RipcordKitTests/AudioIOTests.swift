@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import RipcordKit
@@ -48,6 +49,44 @@ struct AudioIOTests {
             }
         }
         #expect(worst <= step, "worst difference \(worst) exceeds the 24-bit step \(step)")
+    }
+
+    @Test("A multichannel source is rejected instead of being silently truncated")
+    func rejectsMultichannelSource() throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("surround.wav")
+        let frames = 4800
+        let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_MPEG_5_1_A))
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channelLayout: layout)
+        let buffer = try #require(
+            AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)))
+        buffer.frameLength = AVAudioFrameCount(frames)
+        for channel in 0..<Int(format.channelCount) {
+            for frame in 0..<frames {
+                buffer.floatChannelData![channel][frame] = Float(channel + 1) / 10
+            }
+        }
+        do {
+            var settings = format.settings
+            settings[AVLinearPCMIsNonInterleaved] = false
+            let file = try AVAudioFile(forWriting: url, settings: settings,
+                                       commonFormat: .pcmFormatFloat32, interleaved: false)
+            try file.write(from: buffer)
+        }
+
+        do {
+            _ = try AudioIO.read(url)
+            #expect(Bool(false), "a multichannel source was accepted")
+        } catch let error as AudioIO.Failure {
+            guard case .unsupportedChannelCount(let receivedURL, let count) = error else {
+                #expect(Bool(false), "unexpected AudioIO failure: \(error.localizedDescription)")
+                return
+            }
+            #expect(receivedURL == url)
+            #expect(count == 6)
+            #expect(error.localizedDescription.contains("mono or stereo"))
+        }
     }
 
     @Test("The written file really is 24-bit at the rate it was handed",
